@@ -17,8 +17,8 @@ const int armEncDir = 1;
 const float armEncCali = 360.0/2400;
 const float trackEncCali = 1.0;
 
-const int pwm1 = 9;
-const int pwm2 = 10;
+const int pwm1 = 10;
+const int pwm2 = 11;
 const int motorDir = 1;
 
 Encoder trackEnc(trackEncA, trackEncB);
@@ -34,17 +34,42 @@ void setup() {
 }
 
 float trackEncValue = 0;
-float armEncValue = 0;
+float armEncValue = -180;
 long startTime = millis();
 long startTimeMicros = micros();
+
+int testDir = 1;
 void loop() {
   readTrackEncoder();
   readArmEncoder();
 
-  if(millis()-startTime>100){
+  int motorSpeed = 0;
+  float setpoint = 0;
+  int pGain = 160;
+
+  if(millis()-startTime>20){
     startTime = millis();
     startTimeMicros = micros();
     
+    if(armEncValue < 10 && armEncValue > -10){
+      setpoint = -trackEncValue * 0.0003; // try to tilt pendulum to move towards center of track
+      
+      float error = setpoint - armEncValue; //find error
+      motorSpeed = error * pGain; //PID
+      motorSpeed = -motorSpeed; //inverse
+    }else{
+      motorSpeed = 0;
+    }
+
+    motorSpeed = min(255, max(motorSpeed, -255));
+    setMotorSpeed(motorSpeed);
+
+    //plot values to serial plotter
+    Serial.print(setpoint);
+    Serial.print(" ");
+    Serial.print(armEncValue);
+    Serial.print(" ");
+    Serial.println(motorSpeed);
   }
 }
 
@@ -67,7 +92,7 @@ void readTrackEncoder(){
   float newTrackEncValue = trackEncCali * trackEncDir * trackEnc.read();
   if(newTrackEncValue != trackEncValue){
     trackEncValue = newTrackEncValue;
-    //Serial.println(trackEncValue);
+//    Serial.println(trackEncValue);
   }
 }
 
@@ -75,7 +100,7 @@ void readTrackEncoder(){
 //reads the arm encoder
 long oldArmEncValue = 0; //this one needs a seperate variable to store the old value
 //because we use the fmod function to wrap the encoder value
-float armEncOffset = 0; //Used to calibrate arm encoder
+float armEncOffset = -180; //Used to calibrate arm encoder
 void readArmEncoder(){
   long newArmEncValue = armEnc.read();
   if(newArmEncValue != oldArmEncValue){
@@ -83,7 +108,7 @@ void readArmEncoder(){
     
     armEncValue = armEncCali * armEncDir * newArmEncValue + armEncOffset;
     armEncValue = (armEncValue + 180) - floor((armEncValue + 180)/360) * 360 - 180; //stupid mod functions returning - numbers (covert to [-180, 180])
-    //Serial.println(armEncValue);
+//    Serial.println(armEncValue);
   }
 }
 
