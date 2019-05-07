@@ -34,6 +34,7 @@ enum PendulumStates {
 };
 
 enum PendulumStates state = RESTING;
+enum PendulumStates lastState = state;
 
 void setup() {
   Serial.begin(9600);
@@ -52,12 +53,13 @@ long startTimeMicros = micros();
 float lastError = 0;
 float integral = 0;
 int trackSide = 0; //which side of the track the cart hit (1 for right, -1 for left)
+bool stateChanged = false;
 
 void loop() {
   readTrackEncoder();
   readArmEncoder();
 
-  if(millis()-startTime>20){ //50 Hz loop
+  if(millis()-startTime>10){ //100 Hz loop
     int motorSpeed = 0;
     float setpoint = 0;
 
@@ -77,18 +79,42 @@ void loop() {
       }
       break;
       case BALANCING: {
-        int pGain = 50;
-        int iGain = 0;
-        int dGain = 0;
+        float pGain = 200;
+        float iGain = 900;
+        float dGain = 3;
         
-        setpoint = -trackEncValue * 0.0003; // try to tilt pendulum to move towards center of track
+//        setpoint = -trackEncValue * 0.05 - 0.6; // try to tilt pendulum to move towards center of track
+        float offset = -0.6;
+        if (trackEncValue > 4) {
+          setpoint = -.5 + offset;
+        }else if (trackEncValue < -4){
+          setpoint = 0.5 + offset;
+        }else {
+          setpoint = offset;
+        }
         
         float error = setpoint - armEncValue; //find error
+        
         float derivative = (error-lastError) / dt; //calculate derivative of error
         integral += error * dt; //find integral of error
+
+        if(stateChanged) { //if first iteration of BALANCING reset derivative and integral
+          derivative = 0;
+          integral = 0;
+        }
         
+//        if(abs(error) < 0.2){ //reset integral when close to 0
+//          integral = 0;
+//        }
+        if(abs(error) > 4){ // no integral if out of range
+          integral = 0;
+        }
+
+//        Serial.println(derivative);
+//        Serial.println(integral);
         motorSpeed = error * pGain + integral * iGain + derivative * dGain; //PID
         motorSpeed = -motorSpeed; //invert
+        motorSpeed = min(255, max(motorSpeed, -255)); //constrain
         lastError = error;
         
         //plot values to serial plotter
@@ -96,7 +122,7 @@ void loop() {
         Serial.print(" ");
         Serial.print(armEncValue);
         Serial.print(" ");
-        Serial.println(motorSpeed/20.0); //divide just to make it fit on the graph a bit better
+        Serial.println(motorSpeed/50.0); //divide just to make it fit on the graph a bit better
   
         if(trackEncValue > 14 || trackEncValue < -14){
           state = HIT_EDGE;
@@ -104,12 +130,12 @@ void loop() {
         }else if(armEncValue < 20 && armEncValue > -20){ //stay in balancing state unless arm falls outside safe range
           state = BALANCING;
         }else{
-          state = RESTING;
+          state = RESTING; //stop
         }
       }
       break;
       case HIT_EDGE: {
-        int sp = 100;
+        int sp = 90;
         if (trackSide > 0) {
           motorSpeed = -sp;
         }else{
@@ -124,9 +150,14 @@ void loop() {
       }
       break;
     }
-
-    motorSpeed = min(255, max(motorSpeed, -255));
+    
     setMotorSpeed(motorSpeed);
+    if(state!=lastState){
+      stateChanged = true;
+    }else{
+      stateChanged = false;
+    }
+    lastState = state;
   }
 }
 
