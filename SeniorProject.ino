@@ -24,6 +24,15 @@ const int motorDir = 1;
 Encoder trackEnc(trackEncA, trackEncB);
 Encoder armEnc(armEncA, armEncB);
 
+enum PendulumStates {
+  RESTING,
+  BALANCING,
+  HIT_EDGE,
+  E_STOP
+};
+
+enum PendulumStates state = RESTING;
+
 void setup() {
   Serial.begin(9600);
   Serial.println("Starting");
@@ -43,33 +52,57 @@ void loop() {
   readTrackEncoder();
   readArmEncoder();
 
-  int motorSpeed = 0;
-  float setpoint = 0;
-  int pGain = 160;
+  if(millis()-startTime>20){ //50 Hz loop
+    int motorSpeed = 0;
+    float setpoint = 0;
+    int pGain = 160;
+    int iGain = 0;
+    int dGain = 0;
 
-  if(millis()-startTime>20){
+    float dt = (micros() - startTimeMicros) * 0.000001;
+    
     startTime = millis();
     startTimeMicros = micros();
     
-    if(armEncValue < 10 && armEncValue > -10){
-      setpoint = -trackEncValue * 0.0003; // try to tilt pendulum to move towards center of track
-      
-      float error = setpoint - armEncValue; //find error
-      motorSpeed = error * pGain; //PID
-      motorSpeed = -motorSpeed; //inverse
-    }else{
-      motorSpeed = 0;
+    switch(state){
+      case RESTING:
+        motorSpeed = 0; //don't move
+        if(armEncValue < 2 && armEncValue > -2){ //enter balancing mode once arm is up
+          state = BALANCING;
+        }else {
+          state = RESTING;
+        }
+      break;
+      case BALANCING:
+        setpoint = -trackEncValue * 0.0003; // try to tilt pendulum to move towards center of track
+        
+        float error = setpoint - armEncValue; //find error
+        motorSpeed = error * pGain; //PID
+        motorSpeed = -motorSpeed; //invert
+        
+        //plot values to serial plotter
+        Serial.print(setpoint);
+        Serial.print(" ");
+        Serial.print(armEncValue);
+        Serial.print(" ");
+        Serial.println(motorSpeed);
+  
+        if(armEncValue < 10 && armEncValue > -10){ //stay in balancing state unless arm falls outside safe range
+          state = BALANCING;
+        }else {
+          state = RESTING;
+        }
+      break;
+      case HIT_EDGE:
+      break;
+      case E_STOP:
+      break;
+      default:
+      break;
     }
 
     motorSpeed = min(255, max(motorSpeed, -255));
     setMotorSpeed(motorSpeed);
-
-    //plot values to serial plotter
-    Serial.print(setpoint);
-    Serial.print(" ");
-    Serial.print(armEncValue);
-    Serial.print(" ");
-    Serial.println(motorSpeed);
   }
 }
 
