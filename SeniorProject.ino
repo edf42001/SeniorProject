@@ -14,15 +14,17 @@ const int trackEncDir = 1; //1 for positive, -1 for negative
 const int armEncDir = 1;
 
 //Encoder calibrations
-const float armEncCali = 360.0/2400;
-const float trackEncCali = 1.0;
+const float armEncCali = 360.0/2400; //degrees
+const float trackEncCali = 0.001865; //cm
 
+//Initialize encoders
+Encoder trackEnc(trackEncA, trackEncB);
+Encoder armEnc(armEncA, armEncB);
+
+//motor constants
 const int pwm1 = 10;
 const int pwm2 = 11;
 const int motorDir = 1;
-
-Encoder trackEnc(trackEncA, trackEncB);
-Encoder armEnc(armEncA, armEncB);
 
 enum PendulumStates {
   RESTING,
@@ -44,10 +46,13 @@ void setup() {
 
 float trackEncValue = 0;
 float armEncValue = -180;
+
 long startTime = millis();
 long startTimeMicros = micros();
+float lastError = 0;
+float integral = 0;
+int trackSide = 0; //which side of the track the cart hit (1 for right, -1 for left)
 
-int testDir = 1;
 void loop() {
   readTrackEncoder();
   readArmEncoder();
@@ -55,49 +60,68 @@ void loop() {
   if(millis()-startTime>20){ //50 Hz loop
     int motorSpeed = 0;
     float setpoint = 0;
-    int pGain = 160;
-    int iGain = 0;
-    int dGain = 0;
 
     float dt = (micros() - startTimeMicros) * 0.000001;
     
     startTime = millis();
     startTimeMicros = micros();
-    
+
     switch(state){
-      case RESTING:
+      case RESTING: {
         motorSpeed = 0; //don't move
         if(armEncValue < 2 && armEncValue > -2){ //enter balancing mode once arm is up
           state = BALANCING;
         }else {
           state = RESTING;
         }
+      }
       break;
-      case BALANCING:
+      case BALANCING: {
+        int pGain = 50;
+        int iGain = 0;
+        int dGain = 0;
+        
         setpoint = -trackEncValue * 0.0003; // try to tilt pendulum to move towards center of track
         
         float error = setpoint - armEncValue; //find error
-        motorSpeed = error * pGain; //PID
+        float derivative = (error-lastError) / dt; //calculate derivative of error
+        integral += error * dt; //find integral of error
+        
+        motorSpeed = error * pGain + integral * iGain + derivative * dGain; //PID
         motorSpeed = -motorSpeed; //invert
+        lastError = error;
         
         //plot values to serial plotter
         Serial.print(setpoint);
         Serial.print(" ");
         Serial.print(armEncValue);
         Serial.print(" ");
-        Serial.println(motorSpeed);
+        Serial.println(motorSpeed/20.0); //divide just to make it fit on the graph a bit better
   
-        if(armEncValue < 10 && armEncValue > -10){ //stay in balancing state unless arm falls outside safe range
+        if(trackEncValue > 14 || trackEncValue < -14){
+          state = HIT_EDGE;
+          trackSide = trackEncValue > 0 ? 1:-1; //set which side the cart hit
+        }else if(armEncValue < 20 && armEncValue > -20){ //stay in balancing state unless arm falls outside safe range
           state = BALANCING;
-        }else {
+        }else{
           state = RESTING;
         }
+      }
       break;
-      case HIT_EDGE:
-      break;
-      case E_STOP:
-      break;
-      default:
+      case HIT_EDGE: {
+        int sp = 100;
+        if (trackSide > 0) {
+          motorSpeed = -sp;
+        }else{
+          motorSpeed = sp;
+        }
+
+        if(trackSide>0 && trackEncValue < 0.02 || trackSide<0 && trackEncValue > -0.02){
+          state = RESTING; 
+        }else{
+          state = HIT_EDGE;
+        }
+      }
       break;
     }
 
@@ -153,5 +177,5 @@ void serialEvent(){
   while(Serial.available()){
     Serial.read(); //clear buffer
   }
-  resetArmEncoder(); //reset the encoder
+  resetArmEncoder(); //reset the arm encoder
 }
