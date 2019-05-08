@@ -1,3 +1,4 @@
+#include <Arduino.h>
 #include <Encoder.h>
 #include <math.h>
 
@@ -196,7 +197,7 @@ void readArmEncoder(){
     
     armEncValue = armEncCali * armEncDir * newArmEncValue + armEncOffset;
     armEncValue = (armEncValue + 180) - floor((armEncValue + 180)/360) * 360 - 180; //stupid mod functions returning - numbers (covert to [-180, 180])
-//    Serial.println(armEncValue);
+    // Serial.println(armEncValue);
   }
 }
 
