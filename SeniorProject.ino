@@ -1,4 +1,3 @@
-#include <Arduino.h>
 #include <Encoder.h>
 #include <math.h>
 
