@@ -10,12 +10,12 @@ const int armEncA = 3;
 const int armEncB = 5;
 
 //Encoder directions
-const int trackEncDir = 1; //1 for positive, -1 for negative
+const int trackEncDir = -1; //1 for positive, -1 for negative
 const int armEncDir = 1;
 
 //Encoder calibrations
 const float armEncCali = 360.0/2400; //degrees
-const float trackEncCali = 0.001865; //cm
+const float trackEncCali = 0.005045; //cm
 
 //Initialize encoders
 Encoder trackEnc(trackEncA, trackEncB);
@@ -24,7 +24,7 @@ Encoder armEnc(armEncA, armEncB);
 //motor constants
 const int pwm1 = 10;
 const int pwm2 = 11;
-const int motorDir = 1;
+const int motorDir = -1;
 
 enum PendulumStates {
   RESTING,
@@ -37,12 +37,11 @@ enum PendulumStates state = RESTING;
 enum PendulumStates lastState = state;
 
 void setup() {
-  Serial.begin(9600);
+  Serial.begin(115200);
   Serial.println("Starting");
 
   pinMode(pwm1, OUTPUT);
   pinMode(pwm2, OUTPUT);
-  
 }
 
 float trackEncValue = 0;
@@ -79,11 +78,11 @@ void loop() {
       }
       break;
       case BALANCING: {
-        float pGain = 200;
-        float iGain = 900;
-        float dGain = 3;
+        float pGain = 80; 
+        float iGain = 1600;
+        float dGain = 1.2;
         
-//        setpoint = -trackEncValue * 0.05 - 0.6; // try to tilt pendulum to move towards center of track
+//        setpoint = -trackEncValue * 0.1 - 0.6; // try to tilt pendulum to move towards center of track
         float offset = -0.6;
         if (trackEncValue > 4) {
           setpoint = -.5 + offset;
@@ -92,6 +91,7 @@ void loop() {
         }else {
           setpoint = offset;
         }
+
         
         float error = setpoint - armEncValue; //find error
         
@@ -122,7 +122,9 @@ void loop() {
         Serial.print(" ");
         Serial.print(armEncValue);
         Serial.print(" ");
-        Serial.println(motorSpeed/50.0); //divide just to make it fit on the graph a bit better
+        Serial.print(motorSpeed/50.0); //divide just to make it fit on the graph a bit better
+        Serial.print(" ");
+        Serial.println(integral);
   
         if(trackEncValue > 14 || trackEncValue < -14){
           state = HIT_EDGE;
