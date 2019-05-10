@@ -53,6 +53,7 @@ float lastError = 0;
 float integral = 0;
 int trackSide = 0; //which side of the track the cart hit (1 for right, -1 for left)
 bool stateChanged = false;
+float lastTrackEncValue = 0;
 
 void loop() {
   readTrackEncoder();
@@ -60,13 +61,14 @@ void loop() {
 
   if(millis()-startTime>10){ //100 Hz loop
     int motorSpeed = 0;
-    float setpoint = 0;
 
     float dt = (micros() - startTimeMicros) * 0.000001;
     
     startTime = millis();
     startTimeMicros = micros();
 
+    float cartSpeed = (trackEncValue - lastTrackEncValue) / dt;
+    
     switch(state){
       case RESTING: {
         motorSpeed = 0; //don't move
@@ -81,18 +83,11 @@ void loop() {
         float pGain = 80; 
         float iGain = 1600;
         float dGain = 1.2;
-        
-//        setpoint = -trackEncValue * 0.1 - 0.6; // try to tilt pendulum to move towards center of track
-        float offset = -0.6;
-        if (trackEncValue > 4) {
-          setpoint = -.5 + offset;
-        }else if (trackEncValue < -4){
-          setpoint = 0.5 + offset;
-        }else {
-          setpoint = offset;
-        }
 
+        float setpoint = 0;
         
+        setpoint = -trackEncValue * 0.05 + -0.5; // try to tilt pendulum to move towards center of track
+       
         float error = setpoint - armEncValue; //find error
         
         float derivative = (error-lastError) / dt; //calculate derivative of error
@@ -103,9 +98,6 @@ void loop() {
           integral = 0;
         }
         
-//        if(abs(error) < 0.2){ //reset integral when close to 0
-//          integral = 0;
-//        }
         if(abs(error) > 4){ // no integral if out of range
           integral = 0;
         }
@@ -124,7 +116,7 @@ void loop() {
         Serial.print(" ");
         Serial.print(motorSpeed/50.0); //divide just to make it fit on the graph a bit better
         Serial.print(" ");
-        Serial.println(integral);
+        Serial.println(-integral * iGain / 50.0);
   
         if(trackEncValue > 14 || trackEncValue < -14){
           state = HIT_EDGE;
@@ -160,6 +152,8 @@ void loop() {
       stateChanged = false;
     }
     lastState = state;
+
+    lastTrackEncValue = trackEncValue;
   }
 }
 
