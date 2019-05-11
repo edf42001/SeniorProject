@@ -36,7 +36,21 @@ Bc = [B];
 Cc = [C];
 Dc = [D];  
 
+%Aa = [A, zeros(size(A),1);
+%      1, zeros(size(A),1)'];
+%Ba = [B;
+%      0];
+%Br = [zeros(size(B))
+%       -1];
+%Ca = [C, zeros(size(C),1)];
+%Da = D;
+%
+%poles = eig(A-B*K);
+%poles = [poles; -4];
+%Ka = place(Aa,Ba,poles);
+
 Cn = [1, 0, 0, 0];
+
 sys_ss = ss(A, B, Cn, 0);
 Nbar = rscale(sys_ss, K);
 
@@ -44,10 +58,10 @@ states = {'x', 'x_dot', 'phi', 'phi_dot'};
 inputs = {'r'};
 outputs = {'x', 'phi'};
 
-sys_ss = ss(A, B, C, D, 'statename', states, 'inputname', inputs, 'outputname', outputs);
-sys_cl = ss(Ac, Bc * Nbar, Cc, Dc, 'statename', states, 'inputname', inputs, 'outputname', outputs);
+#sys_ss = ss(A, B, C, D, 'statename', states, 'inputname', inputs, 'outputname', outputs);
+sys_cl = ss(Ac, Bc*Nbar, Cc, Dc, 'statename', states, 'inputname', inputs, 'outputname', outputs);
 
-poles = eig(Ac);
+
 P = [-40, -41, -42, -43];
 
 L = place(A', C', P)';
@@ -57,21 +71,22 @@ L = place(A', C', P)';
 #ob = obsv(sys_ss);
 #observability = rank(ob)
 
-#t= 0:0.01:5;
-#r = 0.2 * ones(size(t));
-#[y, t, x] = lsim(sys_cl, r, t);
-#[AX, H1, H2] = plotyy(t, y(:,1),t,y(:,2),'plot');
-#set(get(AX(1), 'Ylabel'), 'String', 'cart position (m)')
-#set(get(AX(2), 'XLabel'), 'String', 'pendulum angle (rad)')
-#title('Step Response with LQR control')
-Bd = B;
-Bd(2,1) = 1.7
+%t= 0:0.01:5;
+%r = 0.2 * ones(size(t));
+%[y, t, x] = lsim(sys_cl, r, t);
+%[AX, H1, H2] = plotyy(t, y(:,1),t,y(:,2),'plot');
+%set(get(AX(1), 'Ylabel'), 'String', 'cart position (m)')
+%set(get(AX(2), 'XLabel'), 'String', 'pendulum angle (rad)')
+%title('Step Response with LQR control')
+
+%Bd = B;
+%Bd(2,1) = 1.7;
 
 Ace = [(A-B*K) (B*K);
        zeros(size(A)) (A-L*C)];
-Bce = [Bd*Nbar;
+Bce = [B*Nbar;
        zeros(size(B))];
-Cce = [Cc zeros(size(Cc))];
+Cce = [Cc, zeros(size(Cc))];
 Dce = [0;0];
 
 states = {'x' 'x_dot' 'phi' 'phi_dot' 'e1' 'e2' 'e3' 'e4'};
