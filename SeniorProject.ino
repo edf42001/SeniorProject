@@ -17,6 +17,9 @@ const int armEncDir = 1;
 const float armEncCali = 360.0/2400; //degrees
 const float trackEncCali = 0.005045; //cm
 
+//limit switch pin
+const int switchPin = 7;
+
 //Initialize encoders
 Encoder trackEnc(trackEncA, trackEncB);
 Encoder armEnc(armEncA, armEncB);
@@ -36,7 +39,8 @@ enum PendulumStates {
   RESTING,
   BALANCING,
   HIT_EDGE,
-  E_STOP
+  E_STOP,
+  CALIBRATE
 };
 
 enum PendulumStates state = RESTING;
@@ -53,9 +57,12 @@ void setup() {
     pinMode(pwm1, OUTPUT);
     pinMode(inA, OUTPUT);
     pinMode(inB, OUTPUT);
+
+    pinMode(switchPin, INPUT_PULLUP);
 }
 
 float trackEncValue = 0;
+float lastTrackEncValue = 0;
 float armEncValue = -180;
 
 long startTime = millis();
@@ -64,7 +71,9 @@ float lastError = 0;
 float integral = 0;
 int trackSide = 0; //which side of the track the cart hit (1 for right, -1 for left)
 bool stateChanged = false;
-float lastTrackEncValue = 0;
+
+bool switchPressed = false;
+bool switchWasPressed = false;
 
 void loop() {
   readTrackEncoder();
@@ -72,14 +81,14 @@ void loop() {
 
   if(millis()-startTime>10){ //100 Hz loop
     int motorSpeed = 0;
-
+    switchPressed = !digitalRead(switchPin);
     float dt = (micros() - startTimeMicros) * 0.000001;
     
     startTime = millis();
     startTimeMicros = micros();
 
     float cartSpeed = (trackEncValue - lastTrackEncValue) / dt;
-    
+    Serial.println(trackEncValue);
     switch(state){
       case RESTING: {
         motorSpeed = 0; //don't move
@@ -129,7 +138,7 @@ void loop() {
         Serial.print(" ");
         Serial.println(-integral * iGain / 50.0);
   
-        if(trackEncValue > 14 || trackEncValue < -14){
+        if(trackEncValue > 14 || trackEncValue < -15){ //they're not symmetric because things aren't symmetric
           state = HIT_EDGE;
           trackSide = trackEncValue > 0 ? 1:-1; //set which side the cart hit
         }else if(armEncValue < 20 && armEncValue > -20){ //stay in balancing state unless arm falls outside safe range
@@ -151,6 +160,25 @@ void loop() {
           state = RESTING; 
         }else{
           state = HIT_EDGE;
+        }
+      }
+      break;
+      case CALIBRATE: {
+        if(!switchWasPressed){
+          motorSpeed = 40;
+          if(switchPressed){
+            resetTrackEnc();
+            motorSpeed = 0;
+            switchWasPressed = true;
+          }
+        }else{
+          if(trackEncValue < 0.05){
+            motorSpeed = 0;
+            state = RESTING;
+            switchWasPressed = false;
+          }else{
+            motorSpeed = -90;
+          }
         }
       }
       break;
@@ -199,14 +227,20 @@ void setMotorSpeed(int power){
 
 
 //reads the track encoder
+float trackEncOffset = 0;
 void readTrackEncoder(){
-  float newTrackEncValue = trackEncCali * trackEncDir * trackEnc.read();
+  float newTrackEncValue = trackEncCali * trackEncDir * trackEnc.read() + trackEncOffset;
   if(newTrackEncValue != trackEncValue){
     trackEncValue = newTrackEncValue;
 //    Serial.println(trackEncValue);
   }
 }
 
+//this function will recalbirate the track enc when the cart hits the limit switch
+float switchPosition = 16.50;
+void resetTrackEnc(){
+  trackEncOffset = switchPosition - trackEncValue;
+}
 
 //reads the arm encoder
 long oldArmEncValue = 0; //this one needs a seperate variable to store the old value
