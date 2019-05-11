@@ -21,10 +21,16 @@ const float trackEncCali = 0.005045; //cm
 Encoder trackEnc(trackEncA, trackEncB);
 Encoder armEnc(armEncA, armEncB);
 
-//motor constants
-const int pwm1 = 10;
-const int pwm2 = 11;
-const int motorDir = -1;
+// old motor constants
+//const int pwm1 = 10;
+//const int pwm2 = 11;
+//const int motorDir = -1;
+
+// new motor constants
+const int pwm1 = 11;
+const int inA = 10;
+const int inB = 12;
+const int motorDir = 1;
 
 enum PendulumStates {
   RESTING,
@@ -37,11 +43,16 @@ enum PendulumStates state = RESTING;
 enum PendulumStates lastState = state;
 
 void setup() {
+  TCCR2B = TCCR2B & B11111000 | B00000010; // for PWM frequency of 3921.16 Hz
   Serial.begin(115200);
   Serial.println("Starting");
 
-  pinMode(pwm1, OUTPUT);
-  pinMode(pwm2, OUTPUT);
+//  pinMode(pwm1, OUTPUT);
+//  pinMode(pwm2, OUTPUT);
+
+    pinMode(pwm1, OUTPUT);
+    pinMode(inA, OUTPUT);
+    pinMode(inB, OUTPUT);
 }
 
 float trackEncValue = 0;
@@ -80,9 +91,9 @@ void loop() {
       }
       break;
       case BALANCING: {
-        float pGain = 80; 
-        float iGain = 1600;
-        float dGain = 1.2;
+        float pGain = 90; 
+        float iGain = 1400;
+        float dGain = 2.2;
 
         float setpoint = 0;
         
@@ -159,15 +170,31 @@ void loop() {
 
 
 //sets motor speed. One PWM for forward, other for reverse
+//void setMotorSpeed(int power){
+//  power = power * motorDir;
+//  if (power >= 0) {
+//    analogWrite(pwm1, power);
+//    analogWrite(pwm2, 0);
+//  }else{
+//    analogWrite(pwm2, -power);
+//    analogWrite(pwm1, 0);
+//  }
+//}
+
+// for new controller
 void setMotorSpeed(int power){
   power = power * motorDir;
-  if (power >= 0) {
-    analogWrite(pwm1, power);
-    analogWrite(pwm2, 0);
+  if (power > 0) {
+    digitalWrite(inA, HIGH);
+    digitalWrite(inB, LOW);
+  }else if(power<0){
+    digitalWrite(inA, LOW);
+    digitalWrite(inB, HIGH);
   }else{
-    analogWrite(pwm2, -power);
-    analogWrite(pwm1, 0);
+    digitalWrite(inA, HIGH);
+    digitalWrite(inB, HIGH);
   }
+  analogWrite(pwm1, abs(power));
 }
 
 
