@@ -1,5 +1,7 @@
 #include <Encoder.h>
 #include <math.h>
+#include <StateSpaceControl.h>
+#include <BasicLinearAlgebra.h>
 
 //Track encoder pins
 const int trackEncA = 2; //pins two and 3 have interupts. Use one per encoder
@@ -46,6 +48,9 @@ enum PendulumStates {
 enum PendulumStates state = RESTING;
 enum PendulumStates lastState = state;
 
+Model<4,1,4> model;
+StateSpaceController<4,1,4> controller(model);
+
 void setup() {
   TCCR2B = TCCR2B & B11111000 | B00000010; // for PWM frequency of 3921.16 Hz
   Serial.begin(115200);
@@ -59,22 +64,48 @@ void setup() {
     pinMode(inB, OUTPUT);
 
     pinMode(switchPin, INPUT_PULLUP);
+
+    model.A <<0,1,0,0,
+              37.692,-.1,0,0,
+              0,0,0,1,
+              0,0,0,0;
+    model.B <<0,
+              -3.846,
+              0,
+              1;
+    model.C <<1,0,0,0,
+              0,1,0,0,
+              0,0,1,0,
+              0,0,0,1;
+    model.D <<0,
+              0,
+              0,
+              0;
+    controller.K << -86.08,-13.03,-44.7,-26.4;
+    controller.initialise();
+    controller.r << -0.0087,
+                    0,
+                    0,
+                    0;
+    
 }
 
 float trackEncValue = 0;
-float lastTrackEncValue = 0;
+float lastTrackEncValue = trackEncValue;
 float armEncValue = -PI;
+float lastArmEncValue = armEncValue;
 
 long startTime = millis();
 long startTimeMicros = micros();
-float lastError = 0;
-float integral = 0;
 int trackSide = 0; //which side of the track the cart hit (1 for right, -1 for left)
 bool stateChanged = false;
 
 bool switchPressed = false;
 bool switchWasPressed = false;
 
+float motorAccel = 0;
+float motorVel = 0;
+int i = 0;
 void loop() {
   readTrackEncoder();
   readArmEncoder();
@@ -88,8 +119,16 @@ void loop() {
     startTimeMicros = micros();
 
     float cartSpeed = (trackEncValue - lastTrackEncValue) / dt;
-    Serial.println(trackEncValue, 4);
-    Serial.println(armEncValue, 4);
+    float pendulumSpeed = (armEncValue - lastArmEncValue) / dt;
+    
+//    Serial.print(trackEncValue, 4);
+//    Serial.print(" ");
+//    Serial.print(armEncValue, 4);
+//    Serial.print(" ");
+//    Serial.print(cartSpeed,4);
+//    Serial.print(" ");
+//    Serial.println(pendulumSpeed,4);
+  
     switch(state){
       case RESTING: {
         motorSpeed = 0; //don't move
@@ -98,51 +137,51 @@ void loop() {
         }else {
           state = RESTING;
         }
+//        i++;
+//        float targetSpeed = 0;
+//        float targetAccel = 0;
+//        if(i%200<100){
+//          targetSpeed = i%200*0.002;
+//          targetAccel = 0.2;
+//        }else{
+//          targetSpeed = -(i%200-100)*0.002;
+//          targetAccel = -0.2;
+//        }
+//        float sp = motorSpeedClosedLoop(targetSpeed, targetAccel, cartSpeed, 550, 40, 700);
+//        motorSpeed = sp;
+//        Serial.print(targetSpeed*10,4);
+//        Serial.print(" ");
+//        Serial.println(cartSpeed*10,4);
       }
       break;
       case BALANCING: {
-        float pGain = 5156; 
-        float iGain = 80214;
-        float dGain = 126;
+        Matrix<4,1> y;
+        y << armEncValue,
+             pendulumSpeed,
+             trackEncValue,
+             cartSpeed;
+        controller.update(y, dt);
+        motorAccel = controller.u(0,0);
 
-        float setpoint = 0;
-        
-        setpoint = -trackEncValue * 0.08 + -0.0087; // try to tilt pendulum to move towards center of track
-       
-        float error = setpoint - armEncValue; //find error
-        
-        float derivative = (error-lastError) / dt; //calculate derivative of error
-        integral += error * dt; //find integral of error
-
-        if(stateChanged) { //if first iteration of BALANCING reset derivative and integral
-          derivative = 0;
-          integral = 0;
+        if(stateChanged){
+          motorVel = 0;
         }
-        
-        if(abs(error) > 0.07){ // no integral if out of range
-          integral = 0;
-        }
+        motorVel += motorAccel * dt;
 
-//        Serial.println(derivative);
-//        Serial.println(integral);
-        motorSpeed = error * pGain + integral * iGain + derivative * dGain; //PID
-        motorSpeed = -motorSpeed; //invert
+        motorSpeed = motorSpeedClosedLoop(motorVel, motorAccel, cartSpeed, 650, 8, 500);    
         motorSpeed = min(255, max(motorSpeed, -255)); //constrain
-        lastError = error;
         
         //plot values to serial plotter
-        Serial.print(setpoint);
+        Serial.print(motorVel*100);
         Serial.print(" ");
-        Serial.print(armEncValue);
-        Serial.print(" ");
-        Serial.print(motorSpeed/50.0); //divide just to make it fit on the graph a bit better
-        Serial.print(" ");
-        Serial.println(-integral * iGain / 50.0);
+        Serial.println(cartSpeed*100);
+//        Serial.print(" ");
+//        Serial.println(motorSpeed/50.0); //divide just to make it fit on the graph a bit better
   
         if(trackEncValue > 0.14 || trackEncValue < -0.15){ //they're not symmetric because things aren't symmetric
           state = HIT_EDGE;
           trackSide = trackEncValue > 0 ? 1:-1; //set which side the cart hit
-        }else if(armEncValue < 0.33 && armEncValue > -0.33){ //stay in balancing state unless arm falls outside safe range
+        }else if(armEncValue < 1 && armEncValue > -1){ //stay in balancing state unless arm falls outside safe range
           state = BALANCING;
         }else{
           state = RESTING; //stop
@@ -173,7 +212,7 @@ void loop() {
             switchWasPressed = true;
           }
         }else{
-          if(trackEncValue < 0.05){
+          if(trackEncValue < 0.0005){
             motorSpeed = 0;
             state = RESTING;
             switchWasPressed = false;
@@ -194,6 +233,7 @@ void loop() {
     lastState = state;
 
     lastTrackEncValue = trackEncValue;
+    lastArmEncValue = armEncValue;
   }
 }
 
@@ -209,6 +249,11 @@ void loop() {
 //    analogWrite(pwm1, 0);
 //  }
 //}
+
+float motorSpeedClosedLoop(float targetVel, float targetAccel, float actualVel, float FFV, float FFA, float kP){
+  float sp = targetVel * FFV + targetAccel * FFA + (targetVel-actualVel)*kP;
+  return sp;
+}
 
 // for new controller
 void setMotorSpeed(int power){

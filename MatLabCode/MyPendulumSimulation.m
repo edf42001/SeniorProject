@@ -40,4 +40,9 @@ x0 = [.04,0,0,0];   %start with pendulum at .8 rad
 
 [y, t, x] = lsim(sys_cl, u, t, x0);  % run simulation
 plotyy(t,y(:,1), t, y(:,2))
+%A
+%B
+%C
+%D
+
    

@@ -1,7 +1,7 @@
 {
     "board": "arduino:avr:uno",
     "programmer": "AVR ISP",
-    "sketch": "SeniorProject.ino",
+    "sketch": "ArduinoCode.ino",
     "port": "COM3",
     "output": "./build"
 }
