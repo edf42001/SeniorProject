@@ -14,8 +14,8 @@ const int trackEncDir = -1; //1 for positive, -1 for negative
 const int armEncDir = 1;
 
 //Encoder calibrations
-const float armEncCali = 360.0/2400; //degrees
-const float trackEncCali = 0.005045; //cm
+const float armEncCali = 2*PI/2400; //radians
+const float trackEncCali = 0.00005045; //meters
 
 //limit switch pin
 const int switchPin = 7;
@@ -63,7 +63,7 @@ void setup() {
 
 float trackEncValue = 0;
 float lastTrackEncValue = 0;
-float armEncValue = -180;
+float armEncValue = -PI;
 
 long startTime = millis();
 long startTimeMicros = micros();
@@ -88,11 +88,12 @@ void loop() {
     startTimeMicros = micros();
 
     float cartSpeed = (trackEncValue - lastTrackEncValue) / dt;
-    Serial.println(trackEncValue);
+    Serial.println(trackEncValue, 4);
+    Serial.println(armEncValue, 4);
     switch(state){
       case RESTING: {
         motorSpeed = 0; //don't move
-        if(armEncValue < 2 && armEncValue > -2){ //enter balancing mode once arm is up
+        if(armEncValue < 0.033 && armEncValue > -0.033){ //enter balancing mode once arm is up
           state = BALANCING;
         }else {
           state = RESTING;
@@ -100,13 +101,13 @@ void loop() {
       }
       break;
       case BALANCING: {
-        float pGain = 90; 
-        float iGain = 1400;
-        float dGain = 2.2;
+        float pGain = 5156; 
+        float iGain = 80214;
+        float dGain = 126;
 
         float setpoint = 0;
         
-        setpoint = -trackEncValue * 0.05 + -0.5; // try to tilt pendulum to move towards center of track
+        setpoint = -trackEncValue * 0.08 + -0.0087; // try to tilt pendulum to move towards center of track
        
         float error = setpoint - armEncValue; //find error
         
@@ -118,7 +119,7 @@ void loop() {
           integral = 0;
         }
         
-        if(abs(error) > 4){ // no integral if out of range
+        if(abs(error) > 0.07){ // no integral if out of range
           integral = 0;
         }
 
@@ -138,10 +139,10 @@ void loop() {
         Serial.print(" ");
         Serial.println(-integral * iGain / 50.0);
   
-        if(trackEncValue > 14 || trackEncValue < -15){ //they're not symmetric because things aren't symmetric
+        if(trackEncValue > 0.14 || trackEncValue < -0.15){ //they're not symmetric because things aren't symmetric
           state = HIT_EDGE;
           trackSide = trackEncValue > 0 ? 1:-1; //set which side the cart hit
-        }else if(armEncValue < 20 && armEncValue > -20){ //stay in balancing state unless arm falls outside safe range
+        }else if(armEncValue < 0.33 && armEncValue > -0.33){ //stay in balancing state unless arm falls outside safe range
           state = BALANCING;
         }else{
           state = RESTING; //stop
@@ -156,7 +157,7 @@ void loop() {
           motorSpeed = sp;
         }
 
-        if(trackSide>0 && trackEncValue < 0.02 || trackSide<0 && trackEncValue > -0.02){
+        if(trackSide>0 && trackEncValue < 0.0002 || trackSide<0 && trackEncValue > -0.0002){
           state = RESTING; 
         }else{
           state = HIT_EDGE;
@@ -232,12 +233,12 @@ void readTrackEncoder(){
   float newTrackEncValue = trackEncCali * trackEncDir * trackEnc.read() + trackEncOffset;
   if(newTrackEncValue != trackEncValue){
     trackEncValue = newTrackEncValue;
-//    Serial.println(trackEncValue);
+//    Serial.println(trackEncValue,4);
   }
 }
 
 //this function will recalbirate the track enc when the cart hits the limit switch
-float switchPosition = 16.50;
+float switchPosition = 0.1650;
 void resetTrackEnc(){
   trackEncOffset = switchPosition - trackEncValue;
 }
@@ -245,20 +246,20 @@ void resetTrackEnc(){
 //reads the arm encoder
 long oldArmEncValue = 0; //this one needs a seperate variable to store the old value
 //because we use the fmod function to wrap the encoder value
-float armEncOffset = -180; //Used to calibrate arm encoder
+float armEncOffset = -PI; //Used to calibrate arm encoder
 void readArmEncoder(){
   long newArmEncValue = armEnc.read();
   if(newArmEncValue != oldArmEncValue){
     oldArmEncValue = newArmEncValue;
     
     armEncValue = armEncCali * armEncDir * newArmEncValue + armEncOffset;
-    armEncValue = (armEncValue + 180) - floor((armEncValue + 180)/360) * 360 - 180; //stupid mod functions returning - numbers (covert to [-180, 180])
-    // Serial.println(armEncValue);
+    armEncValue = (armEncValue + PI) - floor((armEncValue + PI)/(2*PI)) * (2*PI) - PI; //stupid mod functions returning - numbers (covert to [-180, 180])
+    // Serial.println(armEncValue,4);
   }
 }
 
 void resetArmEncoder(){
-  armEncOffset = -180 - armEncValue; //set to -180 (down) because that's where arm naturally lies. 
+  armEncOffset = -PI - armEncValue; //set to -180 (down) because that's where arm naturally lies. 
 }
 
 void serialEvent(){
