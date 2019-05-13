@@ -46,7 +46,7 @@ enum PendulumStates {
   SWING_UP
 };
 
-enum PendulumStates state = SWING_UP;
+enum PendulumStates state = RESTING;
 enum PendulumStates lastState = state;
 
 Model<4,1,4> model;
@@ -84,7 +84,7 @@ void setup() {
               0;
     controller.K << -86.08,-13.03,-44.7,-26.4;
     controller.initialise();
-    controller.r << -0.0087,
+    controller.r << -0.007854,
                     0,
                     0,
                     0;
@@ -107,6 +107,10 @@ bool switchWasPressed = false;
 float motorAccel = 0;
 float motorVel = 0;
 int i = 0;
+
+int swingPulseStart = 0;
+int pulseDirection = 0;
+float lastPendulumSpeed = 0;
 void loop() {
   readTrackEncoder();
   readArmEncoder();
@@ -121,6 +125,8 @@ void loop() {
 
     float cartSpeed = (trackEncValue - lastTrackEncValue) / dt;
     float pendulumSpeed = angleDiff(armEncValue, lastArmEncValue) / dt;
+
+    i++;
     
 //    Serial.print(trackEncValue, 4);
 //    Serial.print(" ");
@@ -138,7 +144,10 @@ void loop() {
         }else {
           state = RESTING;
         }
-//        i++;
+//        if(switchPressed){
+//          state = SWING_UP;
+//        }
+        
 //        float targetSpeed = 0;
 //        float targetAccel = 0;
 //        if(i%200<100){
@@ -173,8 +182,6 @@ void loop() {
         motorSpeed = min(255, max(motorSpeed, -255)); //constrain
         
         //plot values to serial plotter
-        Serial.print(0);
-        Serial.print(" ");
         Serial.print(motorVel*100);
         Serial.print(" ");
         Serial.println(cartSpeed*100);
@@ -231,25 +238,58 @@ void loop() {
         float g = 9.8;  //gravity
         float I = 1.0/3.0 * m * l*l;  //moment of inertia of pendulum
 
-        float max_energy = 0.5 * l * m * g * 1.01;
+        float max_energy = 0.5 * l * m * g * 1.03;
         float energy = 0.5 * l * m * g * cos(armEncValue) + 0.5 * I * pendulumSpeed*pendulumSpeed;
 
         if(stateChanged){
           motorVel = 0;
+          pulseDirection = 0;
         }
         
-        float motorAccel = -2*sign(max_energy-energy)*sign(cos(armEncValue)) * sign(pendulumSpeed) - 4*cartSpeed-4*trackEncValue;
-        motorVel += motorAccel * dt;
+          float motorAccel = -2.5*sign(max_energy-energy)*sign(cos(armEncValue)) * sign(pendulumSpeed) - 5*cartSpeed-4*trackEncValue;
+//        float r = 2.1; //cart position weighting factor
+//        float uA = 1.5; //max cart accel wanted
+//        float epsilon = 0.001; //numbers too small value
+//        float thingy = (sign(energy-max_energy) * pendulumSpeed * cos(armEncValue) - 2 * r * cartSpeed);
+//        float numerator = uA * abs(thingy) + 2 * r * trackEncValue * cartSpeed;
+//        Serial.println(numerator,4);
+//        float denominator;
+//        if(abs(thingy)>epsilon){
+//          denominator = thingy;
+//        }else if(thingy!=0){
+//          denominator = epsilon*sign(thingy);
+//        }else{
+//          denominator = 1;
+//        }
+//        float motorAccel = numerator/denominator;
 
+          motorVel += motorAccel * dt;
+//        if(sign(pendulumSpeed) != sign(lastPendulumSpeed) && pulseDirection == 0){
+//          swingPulseStart = i;
+//          if(angleDiff(armEncValue,PI) > 0){
+//            pulseDirection = 1;
+//          }else{
+//            pulseDirection = -1;
+//          }
+//        }
+//
+//        if(i - swingPulseStart < 20){
+//          motorVel = pulseDirection * 0.05;
+//        }else{
+//          motorVel = 0;
+//          pulseDirection = 0;
+//        }
+
+        
         motorSpeed = motorSpeedClosedLoop(motorVel, motorAccel, cartSpeed, 650, 8, 500);    
         motorSpeed = min(255, max(motorSpeed, -255)); //constrain
 
-//        Serial.print(motorVel*100);
-//        Serial.print(" ");
-//        Serial.println(cartSpeed*100);
-          Serial.print(angleDiff(armEncValue,-PI));
-          Serial.print(" ");
-          Serial.println(trackEncValue);
+        Serial.print(motorVel*100);
+        Serial.print(" ");
+        Serial.println(cartSpeed*100);
+//          Serial.print(angleDiff(armEncValue,-PI));
+//          Serial.print(" ");
+//          Serial.println(trackEncValue);
           
         
         if(trackEncValue > 0.14 || trackEncValue < -0.15){ //they're not symmetric because things aren't symmetric
@@ -276,6 +316,7 @@ void loop() {
 
     lastTrackEncValue = trackEncValue;
     lastArmEncValue = armEncValue;
+    lastPendulumSpeed = pendulumSpeed;
   }
 }
 
