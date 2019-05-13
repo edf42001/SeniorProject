@@ -42,10 +42,11 @@ enum PendulumStates {
   BALANCING,
   HIT_EDGE,
   E_STOP,
-  CALIBRATE
+  CALIBRATE,
+  SWING_UP
 };
 
-enum PendulumStates state = RESTING;
+enum PendulumStates state = SWING_UP;
 enum PendulumStates lastState = state;
 
 Model<4,1,4> model;
@@ -119,7 +120,7 @@ void loop() {
     startTimeMicros = micros();
 
     float cartSpeed = (trackEncValue - lastTrackEncValue) / dt;
-    float pendulumSpeed = (armEncValue - lastArmEncValue) / dt;
+    float pendulumSpeed = angleDiff(armEncValue, lastArmEncValue) / dt;
     
 //    Serial.print(trackEncValue, 4);
 //    Serial.print(" ");
@@ -172,6 +173,8 @@ void loop() {
         motorSpeed = min(255, max(motorSpeed, -255)); //constrain
         
         //plot values to serial plotter
+        Serial.print(0);
+        Serial.print(" ");
         Serial.print(motorVel*100);
         Serial.print(" ");
         Serial.println(cartSpeed*100);
@@ -220,6 +223,45 @@ void loop() {
             motorSpeed = -90;
           }
         }
+      }
+      break;
+      case SWING_UP: {
+        float m = 0.1;  //mass of pendulum
+        float l = .39;   //length of pendulum
+        float g = 9.8;  //gravity
+        float I = 1.0/3.0 * m * l*l;  //moment of inertia of pendulum
+
+        float max_energy = 0.5 * l * m * g * 1.01;
+        float energy = 0.5 * l * m * g * cos(armEncValue) + 0.5 * I * pendulumSpeed*pendulumSpeed;
+
+        if(stateChanged){
+          motorVel = 0;
+        }
+        
+        float motorAccel = -2*sign(max_energy-energy)*sign(cos(armEncValue)) * sign(pendulumSpeed) - 4*cartSpeed-4*trackEncValue;
+        motorVel += motorAccel * dt;
+
+        motorSpeed = motorSpeedClosedLoop(motorVel, motorAccel, cartSpeed, 650, 8, 500);    
+        motorSpeed = min(255, max(motorSpeed, -255)); //constrain
+
+//        Serial.print(motorVel*100);
+//        Serial.print(" ");
+//        Serial.println(cartSpeed*100);
+          Serial.print(angleDiff(armEncValue,-PI));
+          Serial.print(" ");
+          Serial.println(trackEncValue);
+          
+        
+        if(trackEncValue > 0.14 || trackEncValue < -0.15){ //they're not symmetric because things aren't symmetric
+           state = HIT_EDGE;
+           trackSide = trackEncValue > 0 ? 1:-1; //set which side the cart hit
+           motorSpeed = 0;
+         }else if(abs(armEncValue) < 0.04){ //enter balancing state once arm in safe range
+           state = BALANCING;
+         }else{
+           state = SWING_UP; //stop
+         }
+
       }
       break;
     }
@@ -298,7 +340,7 @@ void readArmEncoder(){
     oldArmEncValue = newArmEncValue;
     
     armEncValue = armEncCali * armEncDir * newArmEncValue + armEncOffset;
-    armEncValue = (armEncValue + PI) - floor((armEncValue + PI)/(2*PI)) * (2*PI) - PI; //stupid mod functions returning - numbers (covert to [-180, 180])
+    armEncValue = angleDiff(armEncValue, 0);
     // Serial.println(armEncValue,4);
   }
 }
@@ -312,4 +354,14 @@ void serialEvent(){
     Serial.read(); //clear buffer
   }
   resetArmEncoder(); //reset the arm encoder
+}
+
+int sign(float val) {
+ if (val < 0) return -1;
+ if (val==0) return 0;
+ return 1;
+}
+
+float angleDiff(float a, float b){
+  return (a-b + PI) - floor((a-b + PI)/(2*PI)) * (2*PI) - PI; //stupid mod functions returning - numbers (covert to [-180, 180])
 }
