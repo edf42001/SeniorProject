@@ -30,13 +30,13 @@ Q(1,1) = 900; %allowed error in pendulum angle
 Q(3,3) = 2000;   %allowed error in cart pos
 R = 1;
 K = lqr(A, B, Q, R)
-     
+
 sys_op = ss(A, B, C, D);  %the system open loop
 sys_cl = ss(A-B*K, B, C, D);  %the system closed loop
 
 t = [0:0.01:5];
 u = zeros(size(t));
-x0 = [.04,0,0,0];   %start with pendulum at .8 rad
+x0 = [.4,0,0.1,0];   %start with pendulum at .8 rad
 
 [y, t, x] = lsim(sys_cl, u, t, x0);  % run simulation
 plotyy(t,y(:,1), t, y(:,2))
@@ -44,5 +44,8 @@ plotyy(t,y(:,1), t, y(:,2))
 %B
 %C
 %D
+eig(A-B*K)
+P = [-80, -81, -72, -73];
+L = place(A', C', P)'
 
    

@@ -49,8 +49,11 @@ enum PendulumStates {
 enum PendulumStates state = RESTING;
 enum PendulumStates lastState = state;
 
-Model<4,1,4> model;
-StateSpaceController<4,1,4> controller(model);
+//Model<4,1,4> model;
+//StateSpaceController<4,1,4, false, true> controller(model);
+
+Model<4,1,2> model;
+StateSpaceController<4,1,2, true, true> controller(model);
 
 void setup() {
   TCCR2B = TCCR2B & B11111000 | B00000010; // for PWM frequency of 3921.16 Hz
@@ -74,21 +77,28 @@ void setup() {
               -3.846,
               0,
               1;
+//    model.C <<1,0,0,0,
+//              0,1,0,0,
+//              0,0,1,0,
+//              0,0,0,1;
+//    model.D <<0,
+//              0,
+//              0,
+//              0;
     model.C <<1,0,0,0,
-              0,1,0,0,
               0,0,1,0,
-              0,0,0,1;
     model.D <<0,
-              0,
-              0,
               0;
+      
     controller.K << -86.08,-13.03,-44.7,-26.4;
+    controller.L <<  112.63,  0,
+                     4551, 0,
+                     0,  72.5,
+                     0,  2628;
+    controller.I << 0, 0;
     controller.initialise();
-    controller.r << -0.007854,
-                    0,
-                    0,
+    controller.r << 0,
                     0;
-    
 }
 
 float trackEncValue = 0;
@@ -111,6 +121,9 @@ int i = 0;
 int swingPulseStart = 0;
 int pulseDirection = 0;
 float lastPendulumSpeed = 0;
+float amplitude = 0;
+
+float targetCartPos = 0;
 void loop() {
   readTrackEncoder();
   readArmEncoder();
@@ -147,33 +160,21 @@ void loop() {
 //        if(switchPressed){
 //          state = SWING_UP;
 //        }
-        
-//        float targetSpeed = 0;
-//        float targetAccel = 0;
-//        if(i%200<100){
-//          targetSpeed = i%200*0.002;
-//          targetAccel = 0.2;
-//        }else{
-//          targetSpeed = -(i%200-100)*0.002;
-//          targetAccel = -0.2;
-//        }
-//        float sp = motorSpeedClosedLoop(targetSpeed, targetAccel, cartSpeed, 550, 40, 700);
-//        motorSpeed = sp;
-//        Serial.print(targetSpeed*10,4);
-//        Serial.print(" ");
-//        Serial.println(cartSpeed*10,4);
       }
       break;
       case BALANCING: {
-        Matrix<4,1> y;
+        Matrix<2,1> y;
         y << armEncValue,
-             pendulumSpeed,
-             trackEncValue,
-             cartSpeed;
+             trackEncValue;
+//     Matrix<4,1> y;
+//     y << armEncValue,
+//               pendulumSpeed,
+//               trackEncValue,
+//               cartSpeed;
         controller.update(y, dt);
         motorAccel = controller.u(0,0);
 
-        if(stateChanged){
+        if(stateChanged){ //zero vel upon initialization into this state
           motorVel = 0;
         }
         motorVel += motorAccel * dt;
@@ -181,10 +182,25 @@ void loop() {
         motorSpeed = motorSpeedClosedLoop(motorVel, motorAccel, cartSpeed, 650, 8, 500);    
         motorSpeed = min(255, max(motorSpeed, -255)); //constrain
         
+//        if(i%500 == 0){
+//          if(i%1000 == 0){
+//            controller.r(1, 0) = 0.06;
+//          }else{
+//            controller.r(1, 0) = -0.06;
+//          }
+//        }
+
         //plot values to serial plotter
-        Serial.print(motorVel*100);
-        Serial.print(" ");
-        Serial.println(cartSpeed*100);
+         Serial.print(controller.x_hat(3,0)*100);
+         Serial.print(" ");
+         Serial.print(cartSpeed*100);
+         Serial.print(" ");
+         Serial.print(controller.x_hat(1,0)*100);
+         Serial.print(" ");
+         Serial.println(pendulumSpeed*100);
+//        Serial.print(motorVel*100);
+//        Serial.print(" ");
+//        Serial.println(cartSpeed*100);
 //        Serial.print(" ");
 //        Serial.println(motorSpeed/50.0); //divide just to make it fit on the graph a bit better
   
@@ -244,9 +260,10 @@ void loop() {
         if(stateChanged){
           motorVel = 0;
           pulseDirection = 0;
+          amplitude = 0;
         }
         
-          float motorAccel = -2.5*sign(max_energy-energy)*sign(cos(armEncValue)) * sign(pendulumSpeed) - 5*cartSpeed-4*trackEncValue;
+//          float motorAccel = -2.5*sign(max_energy-energy)*sign(cos(armEncValue)) * sign(pendulumSpeed) - 5*cartSpeed-4*trackEncValue;
 //        float r = 2.1; //cart position weighting factor
 //        float uA = 1.5; //max cart accel wanted
 //        float epsilon = 0.001; //numbers too small value
@@ -263,30 +280,39 @@ void loop() {
 //        }
 //        float motorAccel = numerator/denominator;
 
-          motorVel += motorAccel * dt;
-//        if(sign(pendulumSpeed) != sign(lastPendulumSpeed) && pulseDirection == 0){
-//          swingPulseStart = i;
-//          if(angleDiff(armEncValue,PI) > 0){
-//            pulseDirection = 1;
-//          }else{
-//            pulseDirection = -1;
-//          }
-//        }
+//        motorVel += motorAccel * dt;
+        float best_angle = abs(amplitude) * 0.5;
+        if((sign(angleDiff(armEncValue, amplitude))!=sign(angleDiff(lastArmEncValue, amplitude)) || 
+            sign(angleDiff(armEncValue, -amplitude))!=sign(angleDiff(lastArmEncValue, -amplitude))) && pulseDirection == 0){
+          swingPulseStart = i;
+          if(sign(pendulumSpeed) < 0){
+            pulseDirection = -1;
+          }else{
+            pulseDirection = 1;
+          }
+        }
+
+        if(sign(pendulumSpeed)!=sign(lastPendulumSpeed)){
+          amplitude = angleDiff(PI, armEncValue);
+        }
+
+        Serial.println(amplitude);
 //
-//        if(i - swingPulseStart < 20){
-//          motorVel = pulseDirection * 0.05;
-//        }else{
-//          motorVel = 0;
-//          pulseDirection = 0;
-//        }
+        if(i - swingPulseStart < 50){
+          motorAccel = pulseDirection * 0.4;
+          motorVel += motorAccel * dt;
+        }else{
+          motorVel = 0;
+          pulseDirection = 0;
+          motorAccel = 0;
+        }
 
         
         motorSpeed = motorSpeedClosedLoop(motorVel, motorAccel, cartSpeed, 650, 8, 500);    
         motorSpeed = min(255, max(motorSpeed, -255)); //constrain
-
-        Serial.print(motorVel*100);
-        Serial.print(" ");
-        Serial.println(cartSpeed*100);
+        // Serial.print(motorVel*100);
+        // Serial.print(" ");
+        // Serial.println(cartSpeed*100);
 //          Serial.print(angleDiff(armEncValue,-PI));
 //          Serial.print(" ");
 //          Serial.println(trackEncValue);
