@@ -1,5 +1,4 @@
-dataFile = fopen('SwingupTestData.txt', 'r');
-data = dlmread('SwingupTestData.txt', ' ');
+data = dlmread('SwingupTestData2ndMethod.txt', ' ');
 
 t = 0:0.01:(size(data,1)-1) * 0.01;
 

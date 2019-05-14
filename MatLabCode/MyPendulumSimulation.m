@@ -36,7 +36,7 @@ sys_cl = ss(A-B*K, B, C, D);  %the system closed loop
 
 t = [0:0.01:5];
 u = zeros(size(t));
-x0 = [.4,0,0.1,0];   %start with pendulum at .8 rad
+x0 = [.08,0,0.1,0];   %start with pendulum at .08 rad
 
 [y, t, x] = lsim(sys_cl, u, t, x0);  % run simulation
 plotyy(t,y(:,1), t, y(:,2))
@@ -45,7 +45,7 @@ plotyy(t,y(:,1), t, y(:,2))
 %C
 %D
 eig(A-B*K)
-P = [-80, -81, -72, -73];
+P = [-50, -51, -52, -53];
 L = place(A', C', P)'
 
    
