@@ -154,7 +154,7 @@ void loop() {
     switch(state){
       case RESTING: {
         motorSpeed = 0; //don't move
-        if(armEncValue < 0.033 && armEncValue > -0.033){ //enter balancing mode once arm is up
+        if(armEncValue < 0.033 && armEncValue > -0.033 && !switchPressed){ //enter balancing mode once arm is up
           state = BALANCING;
         }else {
           state = RESTING;
@@ -201,18 +201,16 @@ void loop() {
         }
 
         //plot values to serial plotter
-            Serial.print(controller.r(2, 0)*100);
-            Serial.print(" ");
-            Serial.println(trackEncValue*100);
+//            Serial.print(controller.r(2, 0)*100);
+//            Serial.print(" ");
+//            Serial.println(trackEncValue*100);
 //         Serial.print(" ");
 //         Serial.print(controller.x_hat(1,0)*100);
-//         Serial.print(" ");
-//         Serial.println(pendulumSpeed*100);
-//        Serial.print(motorVel*100);
+//        Serial.print(0);
 //        Serial.print(" ");
-//        Serial.println(cartSpeed*100);
+//        Serial.print(armEncValue*100);
 //        Serial.print(" ");
-//        Serial.println(motorSpeed/50.0); //divide just to make it fit on the graph a bit better
+//        Serial.println(motorSpeed); //divide just to make it fit on the graph a bit better
   
         if(trackEncValue > 0.14 || trackEncValue < -0.15){ //they're not symmetric because things aren't symmetric
           state = HIT_EDGE;
@@ -266,7 +264,7 @@ void loop() {
         float g = 9.8;  //gravity
         float I = 1.0/3.0 * m * l*l;  //moment of inertia of pendulum
 
-        float max_energy = 0.5 * l * m * g * 1.04;
+        float max_energy = 0.5 * l * m * g * 1.05;
         float energy = 0.5 * l * m * g * cos(armEncValue) + 0.5 * I * pendulumSpeed*pendulumSpeed;
 
         if(stateChanged){
@@ -282,7 +280,7 @@ void loop() {
             swingPulseStart = i;
         }
         if(swingPulseStart != 0){
-          motorAccel = -4*sign(cos(armEncValue)) * sign(pendulumSpeed) - 6*cartSpeed;
+          motorAccel = -4*sign(max_energy-energy)*sign(cos(armEncValue)) * sign(pendulumSpeed) - 6*cartSpeed;
           if(abs(armEncValue) < PI/2 ||
               sign(pendulumSpeed) != sign(lastPendulumSpeed)){
             swingPulseStart = 0;
@@ -314,7 +312,7 @@ void loop() {
            state = HIT_EDGE;
            trackSide = trackEncValue > 0 ? 1:-1; //set which side the cart hit
            motorSpeed = 0;
-         }else if(abs(armEncValue) < 0.15){ //enter balancing state once arm in safe range
+         }else if(abs(armEncValue) < 0.2){ //enter balancing state once arm in safe range
            state = BALANCING;
          }else{
            state = SWING_UP; //stop
@@ -386,7 +384,7 @@ void readTrackEncoder(){
 //this function will recalbirate the track enc when the cart hits the limit switch
 float switchPosition = 0.1650;
 void resetTrackEnc(){
-  trackEncOffset = switchPosition - trackEncValue;
+  trackEncOffset = switchPosition - (trackEncValue - trackEncOffset);
 }
 
 //reads the arm encoder
