@@ -22,6 +22,9 @@ const float trackEncCali = 0.00005045; //meters
 //limit switch pin
 const int switchPin = 7;
 
+//random button pin
+const int buttonPin = 8;
+
 //Initialize encoders
 Encoder trackEnc(trackEncA, trackEncB);
 Encoder armEnc(armEncA, armEncB);
@@ -46,14 +49,14 @@ enum PendulumStates {
   SWING_UP
 };
 
-enum PendulumStates state = CALIBRATE;
+enum PendulumStates state = RESTING;
 enum PendulumStates lastState = state;
 
 //Model<4,1,4> model;
 //StateSpaceController<4,1,4, false, true> controller(model);
 
 Model<4,1,4> model;
-StateSpaceController<4,1,4, false, true> controller(model);
+StateSpaceController<4,1,4, false, false> controller(model);
 
 void setup() {
   TCCR2B = TCCR2B & B11111000 | B00000010; // for PWM frequency of 3921.16 Hz
@@ -68,6 +71,7 @@ void setup() {
     pinMode(inB, OUTPUT);
 
     pinMode(switchPin, INPUT_PULLUP);
+    pinMode(buttonPin, INPUT_PULLUP);
 
     model.A <<0,1,0,0,
               37.692,-.1,0,0,
@@ -95,9 +99,11 @@ void setup() {
                      4551, 0,
                      0,  72.5,
                      0,  2628;
-    controller.I << 0, 0;
+    controller.I << 0, 0, 0, 0;
     controller.initialise();
     controller.r << 0,
+                    0,
+                    0,
                     0;
 }
 
@@ -122,7 +128,11 @@ int swingPulseStart = 0;
 float lastPendulumSpeed = 0;
 float amplitude = 0;
 
-float targetCartPos = 0;
+int targetCartPos = 1; //1 corresponds to middle position which is where the cart starts
+
+bool buttonPressed = false;
+bool lastButtonPressed = false;
+
 void loop() {
   readTrackEncoder();
   readArmEncoder();
@@ -130,6 +140,7 @@ void loop() {
   if(millis()-startTime>10){ //100 Hz loop
     int motorSpeed = 0;
     switchPressed = !digitalRead(switchPin);
+    buttonPressed = !digitalRead(buttonPin);
     float dt = (micros() - startTimeMicros) * 0.000001;
     
     startTime = millis();
@@ -139,14 +150,6 @@ void loop() {
     float pendulumSpeed = angleDiff(armEncValue, lastArmEncValue) / dt;
 
     i++;
-    
-//    Serial.print(trackEncValue, 4);
-//    Serial.print(" ");
-//    Serial.print(armEncValue, 4);
-//    Serial.print(" ");
-//    Serial.print(cartSpeed,4);
-//    Serial.print(" ");
-//    Serial.println(pendulumSpeed,4);
   
     switch(state){
       case RESTING: {
@@ -156,15 +159,16 @@ void loop() {
         }else {
           state = RESTING;
         }
-//        if(switchPressed){
-//          state = SWING_UP;
-//        }
+        if(buttonPressed){
+          state = CALIBRATE;
+        }
       }
       break;
       case BALANCING: {
 //        Matrix<2,1> y;
 //        y << armEncValue,
 //             trackEncValue;
+        float dist = 0.08;
         Matrix<4,1> y;
         y << armEncValue,
                    pendulumSpeed,
@@ -173,26 +177,33 @@ void loop() {
         controller.update(y, dt);
         motorAccel = controller.u(0,0);
 
-        if(stateChanged){ //zero vel upon initialization into this state
+        if(stateChanged){ //zero vel upon initialization into this state and also cart position
           motorVel = 0;
+          targetCartPos = 1; 
+          controller.r(2, 0) = (targetCartPos-1)* dist - 0.015;
         }
         motorVel += motorAccel * dt;
 
         motorSpeed = motorSpeedClosedLoop(motorVel, motorAccel, cartSpeed, 650, 8, 500);    
         motorSpeed = min(255, max(motorSpeed, -255)); //constrain
         
-//        if(i%500 == 0){
-//          if(i%1000 == 0){
-//            controller.r(1, 0) = 0.06;
-//          }else{
-//            controller.r(1, 0) = -0.06;
-//          }
-//        }
+        
+        if(buttonPressed && !lastButtonPressed){
+          
+          targetCartPos = (targetCartPos + 1) % 3; //3 positions
+          controller.r(2, 0) = (targetCartPos-1)* dist-0.015;
+        }
+
+        if(abs((targetCartPos-1)* dist - trackEncValue) < .04){
+          controller.I(0,2) = 0;
+        }else{
+          controller.I(0,2) = 0;
+        }
 
         //plot values to serial plotter
-//         Serial.print(controller.x_hat(3,0)*100);
-//         Serial.print(" ");
-//         Serial.print(cartSpeed*100);
+            Serial.print(controller.r(2, 0)*100);
+            Serial.print(" ");
+            Serial.println(trackEncValue*100);
 //         Serial.print(" ");
 //         Serial.print(controller.x_hat(1,0)*100);
 //         Serial.print(" ");
@@ -271,7 +282,7 @@ void loop() {
             swingPulseStart = i;
         }
         if(swingPulseStart != 0){
-          motorAccel = -4*sign(max_energy-energy)*sign(cos(armEncValue)) * sign(pendulumSpeed) - 6*cartSpeed;
+          motorAccel = -4*sign(cos(armEncValue)) * sign(pendulumSpeed) - 6*cartSpeed;
           if(abs(armEncValue) < PI/2 ||
               sign(pendulumSpeed) != sign(lastPendulumSpeed)){
             swingPulseStart = 0;
@@ -304,12 +315,10 @@ void loop() {
            trackSide = trackEncValue > 0 ? 1:-1; //set which side the cart hit
            motorSpeed = 0;
          }else if(abs(armEncValue) < 0.15){ //enter balancing state once arm in safe range
-//            controller.r(2,0) = trackEncValue;
            state = BALANCING;
          }else{
            state = SWING_UP; //stop
          }
-// && sign(armEncValue) * sign(trackEncValue) <= 0
       }
       break;
     }
@@ -325,6 +334,7 @@ void loop() {
     lastTrackEncValue = trackEncValue;
     lastArmEncValue = armEncValue;
     lastPendulumSpeed = pendulumSpeed;
+    lastButtonPressed = buttonPressed;
   }
 }
 
